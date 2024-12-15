@@ -82,7 +82,7 @@ GM_DE(ygroup = ygroup, boots = NULL, alpha = alpha, alpha_level = 0.05, scores =
 se0 <- GM_IE(ygroupM = ygroup[, 1, ], scores = Score.est)
 se1 <- GM_IE(ygroupM = ygroup[, 2, ], scores = Score.est)
 
-r <- 5
+r <- 6
 # Initialize a list to store results
 resDE.org <- vector("list", length = r)
 resSE0.org <- vector("list", length = r)
