@@ -44,20 +44,46 @@ datagen_int<-function(rangeN = 400:500, nblocks=1000,OR_1=3, OR_2 =10, OR_C=3.6,
   }
   return(dplyr::bind_rows(data.list))
 }
-
+set.seed(2025)
 (datTND<-datagen_int(OR_1=10, OR_2 =10,nblocks=1000))
 
-# What are the observed percentage of treated?
+datTND[which(datTND$block == 50),]
+
+# Aggregating the data: Calculate the mean of V being 1 for each 'block'
 obs_alpha <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
 hist(obs_alpha$V, breaks = 100)
 print(paste(sum(obs_alpha$V %in% c(0, 1)), 'all treated/control'))
+
+
+# Identifying blocks with all 0s or all 1s
+blocks_all_treated_control <- obs_alpha$block[obs_alpha$V %in% c(0, 1)]
+# Removing rows in datTND where block is all treated or all control
+datTND <- datTND[!datTND$block %in% blocks_all_treated_control, ]
+obs_alpha_fil <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
+hist(obs_alpha_fil$V, breaks = 100)
+
+# Loop over possible values of 'block'
+unique_blocks <- unique(datTND$block)
+
+for (i in unique_blocks) {
+  # Check if there are any rows where 'block' equals 'i'
+  if (dim(datTND[datTND$block == i, ])[1] == 0) {
+    message("No rows found for block == ", i)
+  } else {
+    # Remove the rows where 'block' equals 'i'
+    datTND <- datTND[datTND$block = !i, ]
+  }
+}
+datTND[which(datTND$block == 50),]
+
 # ----------- PS estimates ----------- #
 cov_names <- c('C')
 cov_cols <- which(names(datTND) %in% cov_names)
 cov_names <- names(datTND)[cov_cols]
+
 glm_form <- paste('V ~ (1 | block) +', paste(cov_names, collapse = ' + '))
 phi_hat <- PS_model(datTND, glm_form = glm_form, method = 'TND_IPW')
-# ---------- Coefficients of counterfactual treatment allocation ----------- #
+# ---------- Coefficients of counterfactual treatment allocation policy Q----------- #
 gamma_numer <- Policy_coef(datTND, gamma_form= glm_form, method = 'TND_IPW')
 # ----------- Calculating the IPW ----------- #
 # GLMM: estimand = 'GLMM'
@@ -72,6 +98,17 @@ resB <-GroupIPW(dta = datTND, cov_cols = cov_cols, phi_hat = phi_hat,
                 gamma_numer = gamma_numer)
 ygroup = resB$yhat_group
 apply(ygroup, c(2, 3), mean, na.rm = TRUE)
+
+
+
+dta = datTND; cov_cols = cov_cols; phi_hat = phi_hat;
+alpha = alpha; trt_col = which(names(datTND) == 'V'); out_col = which(names(datTND) == 'Y');
+estimand = 'GLMM';
+gamma_numer = gamma_numer;alpha_re_bound = 10; integral_bound = 10;keep_re_alpha = FALSE;verbose = TRUE;neigh_ind = NULL;
+A = dta$V[neigh_ind[[nn]]];X = dta[neigh_ind[[nn]], cov_cols];
+
+
+
 # ----------- Estimates and asymptotic variance of the population average potential----------- #
 Score.est <- CalcScore(dta = datTND, neigh_ind = datTND$block, phi_hat = phi_hat, cov_cols = cov_cols,
                        trt_name = 'V', integral_bound = 10)

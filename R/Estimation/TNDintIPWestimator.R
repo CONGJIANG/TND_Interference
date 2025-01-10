@@ -1,3 +1,5 @@
+# Clear the entire environment
+rm(list = ls())
 #' Propensity score function to get phi_hat
 #'
 #' @param datTND TND Data frame including treatment, outcome, and covariates.
@@ -126,6 +128,26 @@ expit <- function(x) {
 }
 
 
+
+
+#' Calculating the denominator of the group estimator.
+#' 
+#' @param A The treatment vector for units in the group.
+#' @param X The covariates for units in the group.
+#' @param phi_hat A list with two elements. The first one is a vector of
+#' coefficients of the ps, and the second one is the random effect variance.
+#' If the second element is 0, the propensity score excludes random effects.
+#' @param alpha This value of alpha is used to stabilize calculations. If
+#' include_alpha is set to TRUE, alpha needs to coincide with the alpha used
+#' for calculating the numerator.
+#' @param integral_bound If the propensity score includes a random effect, the
+#' integral in the denominator is calculated over the normal distribution of
+#' the random effects from - integral_bound to integral_bound.
+#' @param include_alpha If include_alpha is set to true, the probabilities in
+#' the denominator are divided by the specified value of alpha to stabilize the
+#' integral calculation.
+#' 
+#' @export
 Denominator <- function(A, X, phi_hat, alpha = NULL, integral_bound = 10,
                         include_alpha = TRUE) {
   
@@ -134,14 +156,14 @@ Denominator <- function(A, X, phi_hat, alpha = NULL, integral_bound = 10,
     stop('No alpha provided.')
   }
   
-  #X <- as.matrix(cbind(1, X))
+  X <- as.matrix(cbind(1, X))
   re_sd <- sqrt(phi_hat[[2]])
-  phi_hat_cof <- matrix(phi_hat[[1]], ncol = 1)
+  phi_hat[[1]] <- matrix(phi_hat[[1]], nrow = length(phi_hat[[1]]), ncol = 1)
   
   # Creating the function that we will integrate over.
   f_int <- function(b) {
     r <- 1
-    lin_pred <- as.matrix(cbind(1, X)) %*% phi_hat_cof  # Includes intercept.
+    lin_pred <- X %*% phi_hat[[1]]  # Includes intercept.
     for (ii in 1:length(A)) {
       prob_trt <- expit(lin_pred[ii] + b)
       if (include_alpha) {
@@ -168,6 +190,7 @@ Denominator <- function(A, X, phi_hat, alpha = NULL, integral_bound = 10,
   
   return(ans)
 }
+
 
 #' Estimating the group average potential outcome
 #' 
