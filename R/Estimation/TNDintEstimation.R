@@ -1,6 +1,10 @@
 #' TND Partial Interference DATA generation
 #' 
 #'
+#'
+#'
+library(truncnorm)
+library(lme4)
 datagen_int<-function(rangeN = 400:500, nblocks=1000,OR_1=3, OR_2 =10, OR_C=3.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F){
   data.list <- list()
   N <- sample(x = rangeN, size = nblocks, replace = TRUE)
@@ -62,20 +66,6 @@ datTND <- datTND[!datTND$block %in% blocks_all_treated_control, ]
 obs_alpha_fil <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
 hist(obs_alpha_fil$V, breaks = 100)
 
-# Loop over possible values of 'block'
-unique_blocks <- unique(datTND$block)
-
-for (i in unique_blocks) {
-  # Check if there are any rows where 'block' equals 'i'
-  if (dim(datTND[datTND$block == i, ])[1] == 0) {
-    message("No rows found for block == ", i)
-  } else {
-    # Remove the rows where 'block' equals 'i'
-    datTND <- datTND[datTND$block = !i, ]
-  }
-}
-datTND[which(datTND$block == 50),]
-
 # ----------- PS estimates ----------- #
 cov_names <- c('C')
 cov_cols <- which(names(datTND) %in% cov_names)
@@ -89,7 +79,7 @@ gamma_numer <- Policy_coef(datTND, gamma_form= glm_form, method = 'TND_IPW')
 # GLMM: estimand = 'GLMM'
 obs_alpha <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
 alpha_range <- quantile(obs_alpha$V, probs = c(0.2, 0.9))
-alpha <- seq(alpha_range[1], alpha_range[2], length.out = 15)
+alpha <- seq(alpha_range[1], alpha_range[2], length.out = 5)
 alpha <- unique(sort(round(c(alpha, 0.34, 0.5), 2)))
 
 resB <-GroupIPW(dta = datTND, cov_cols = cov_cols, phi_hat = phi_hat,
@@ -99,8 +89,11 @@ resB <-GroupIPW(dta = datTND, cov_cols = cov_cols, phi_hat = phi_hat,
 ygroup = resB$yhat_group
 apply(ygroup, c(2, 3), mean, na.rm = TRUE)
 
+ypop <- apply(ygroup, 2, mean)
+exp(apply( (log(ygroup[, 2, ]) - log(ygroup[, 1, ])), 2, mean))
 
 
+# for testing
 dta = datTND; cov_cols = cov_cols; phi_hat = phi_hat;
 alpha = alpha; trt_col = which(names(datTND) == 'V'); out_col = which(names(datTND) == 'Y');
 estimand = 'GLMM';
@@ -116,8 +109,8 @@ Score.est <- CalcScore(dta = datTND, neigh_ind = datTND$block, phi_hat = phi_hat
 DEvar(ygroup = ygroup, scores = Score.est, dta = datTND)
 GM_DE(ygroup = ygroup, boots = NULL, alpha = alpha, alpha_level = 0.05, scores = Score.est, dta = datTND)
 
-se0 <- GM_IE(ygroupM = ygroup[, 1, ], scores = Score.est)
-se1 <- GM_IE(ygroupM = ygroup[, 2, ], scores = Score.est)
+(se0 <- GM_IE(ygroupM = ygroup[, 1, ], scores = Score.est))
+(se1 <- GM_IE(ygroupM = ygroup[, 2, ], scores = Score.est))
 
 r <- 6
 # Initialize a list to store results
