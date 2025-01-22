@@ -231,7 +231,8 @@ GroupIPW <- function(dta, cov_cols, phi_hat, gamma_numer = NULL, alpha,
                      keep_re_alpha = FALSE, estimand = c('GLMM', 'TypeB'),
                      verbose = TRUE) {
   
-  estimand <- match.arg(estimand)
+  #estimand <- match.arg(estimand)
+  estimand <- match.arg(estimand, choices=c("GLMM",'TypeB'))
   integral_bound <- abs(integral_bound)
   alpha_re_bound <- abs(alpha_re_bound)
   phi_hat[[1]] <- matrix(phi_hat[[1]], ncol = 1)
@@ -244,7 +245,8 @@ GroupIPW <- function(dta, cov_cols, phi_hat, gamma_numer = NULL, alpha,
   if (is.null(neigh_ind)) {
     neigh_ind <- sapply(1 : max(dta$block), function(x) which(dta$block == x))
   }
-  
+  # removing there is no units in the block (removing because all 0 or 1 are removed)
+  neigh_ind<-neigh_ind[-which(unlist(lapply(neigh_ind, function(x){length(x)==0})))]
   n_neigh <- length(neigh_ind)
   
   yhat_group <- array(NA, dim = c(n_neigh, 2, length(alpha)))

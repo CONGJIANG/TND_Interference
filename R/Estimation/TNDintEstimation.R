@@ -4,7 +4,13 @@
 #'
 #'
 library(truncnorm)
+library(Matrix)
 library(lme4)
+#*** key for lme4 works.
+#utils::install.packages("lme4", type = "source")
+
+source("TNDintIPWestimator.R")
+
 datagen_int<-function(rangeN = 400:500, nblocks=1000,OR_1=3, OR_2 =10, OR_C=3.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F){
   data.list <- list()
   N <- sample(x = rangeN, size = nblocks, replace = TRUE)
@@ -65,6 +71,7 @@ blocks_all_treated_control <- obs_alpha$block[obs_alpha$V %in% c(0, 1)]
 datTND <- datTND[!datTND$block %in% blocks_all_treated_control, ]
 obs_alpha_fil <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
 hist(obs_alpha_fil$V, breaks = 100)
+print(paste(sum(obs_alpha_fil$V %in% c(0, 1)), 'all treated/control'))
 
 # ----------- PS estimates ----------- #
 cov_names <- c('C')
