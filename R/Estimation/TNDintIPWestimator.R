@@ -408,6 +408,27 @@ CalcScore <- function(dta, neigh_ind = NULL, phi_hat, cov_cols,
 
 
 
+
+#' Geometric Direct effect estimates and asymptotic variance.
+#' 
+#' @param ypop A matrix with rows corresponding to the potential outcome under
+#' control and treatment, and columns corresponding to the cluster-average
+#' propensity of treatment.
+#' @param ypop_var An 3-dimensional array, where the first two dimensions are
+#' equal to 2 and include the variance covariance matrix of the population
+#' average potential outcome for each alpha. Dimension 3 is alpha.
+#' @param boots The results of BootVar() function including estimates of the
+#' potential outcomes from the bootstrap samples.
+#' @param alpha The values of alpha we consider. If ypop has column names,
+#' alpha can be left null.
+#' @param alpha_level Numeric. The alpha level of the confidence intervals
+#' based on the quantiles of the bootstrap estimates.
+#' 
+#' @return A matrix with rows including the estimate and variance of the direct
+#' effect and columns corresponding to alpha.
+#' 
+#' @export
+#' 
 GM_DE <-function(ygroup, boots = NULL, alpha = NULL,alpha_level = 0.05, scores = NULL,dta = NULL, use = 'everything'){
   quants <- c(0, 1) + c(1, - 1) * alpha_level / 2
   norm_quant <- - qnorm(alpha_level / 2)
@@ -496,7 +517,7 @@ DEvar <- function(ygroup,scores = NULL,dta = NULL, use = 'everything') {
     
     # Calculate variance component for the adjusted variance estimation
     chol_B11_inv <- chol(B11_inv)
-    mat1 <- (B21 - 2*F21) %*% chol_B11_inv %*% B21
+    mat1 <- (B21 - F21) %*% chol_B11_inv %*% B21
     mat <- B21 %*% B11_inv %*% F21
     
     # Store or utilize mat1 and mat as needed for further variance calculations
@@ -507,195 +528,10 @@ DEvar <- function(ygroup,scores = NULL,dta = NULL, use = 'everything') {
   
 }
 
-###########################################
-### Direct and spillover effect estimates and asymptotic variance
-### (1)Delta method
-### (2)DE
-### (3)IEvar
-### (4)IE
-###########################################
-  
-###################################
 
-
-#' Direct effect estimates and asymptotic variance.
+#' Geometric Indirect effect estimates and asymptotic variance.
 #' 
-#' @param ypop A matrix with rows corresponding to the potential outcome under
-#' control and treatment, and columns corresponding to the cluster-average
-#' propensity of treatment.
-#' @param ypop_var An 3-dimensional array, where the first two dimensions are
-#' equal to 2 and include the variance covariance matrix of the population
-#' average potential outcome for each alpha. Dimension 3 is alpha.
-#' @param boots The results of BootVar() function including estimates of the
-#' potential outcomes from the bootstrap samples.
-#' @param alpha The values of alpha we consider. If ypop has column names,
-#' alpha can be left null.
-#' @param alpha_level Numeric. The alpha level of the confidence intervals
-#' based on the quantiles of the bootstrap estimates.
-#' 
-#' @return A matrix with rows including the estimate and variance of the direct
-#' effect and columns corresponding to alpha.
-#' 
-#' @export
-#' 
-  
-DE <- function(ypop, ypop_var, boots = NULL, alpha = NULL,
-               alpha_level = 0.05) {
-  
-  quants <- c(0, 1) + c(1, - 1) * alpha_level / 2
-  norm_quant <- - qnorm(alpha_level / 2)
-  
-  if (is.null(alpha)) {
-    if (is.null(colnames(ypop))) {
-      stop('Specify alpha.')
-    }
-    alpha <- as.numeric(colnames(ypop))
-  }
-  
-  dim_names <- c('mu_0','mu_1','DE.est', 'var', 'low_int', 'high_int')
-  if (!is.null(boots)) {
-    dim_names <- c(dim_names, 'boot_var', 'boot_var_LB', 'boot_var_UB',
-                   'boot_low_quant', 'boot_high_quant')
-  }
-  
-  de <- array(NA, dim = c(length(dim_names), length(alpha)))
-  dimnames(de) <- list(stat = dim_names, alpha = alpha)
-  
-  de[1, ] <- ypop[1, ]
-  de[2, ] <- ypop[2, ]
-  de[3, ] <- ypop[2, ]/ypop[1, ]
-  de[4, ] <- sapply(seq_along(ypop[1, ]), function(i) {
-    delta_method(ypop_var[, , i], c(1, -1/(ypop[1, ][i])^2))
-  })
-  de[5, ] <- de[1, ] - norm_quant * sqrt(de[2, ])
-  de[6, ] <- de[1, ] + norm_quant * sqrt(de[2, ])
-  
-  if (!is.null(boots)) {
-    de[7, ] <- apply(boots[2, , ] - boots[1, , ], 1, var)
-    de[8, ] <- de[1, ] - norm_quant * sqrt(de[5, ])
-    de[9, ] <- de[1, ] + norm_quant * sqrt(de[5, ])
-    de[10 : 11, ] <- apply(boots[2, , ] - boots[1, , ], 1, quantile,
-                         probs = quants)
-  }
-  
-  return(de)
-}
-
-
-IEvar <- function(ygroupV = ygroupM, scores){
-  n_neigh <- dim(ygroupV)[1]
-  alpha <- as.numeric(dimnames(ygroupV)[[2]])
-  
-  ie_var <- cov(ygroupV)
-  ie_var <- ie_var * (n_neigh - 1) / (n_neigh ^ 2)
-  
-# Based on the estimated propensity score.
-  if (is.null(scores)) {
-    stop('Provide score matrix.')
-  }
-  
-  var_est_ps <- array(0, dim = dim(ie_var))
-  num_gamma <- dim(scores)[1]
-  
-  # --- Calculating B11, the information matrix of the cluster ps.
-  B11 <- matrix(0, nrow = num_gamma, ncol = num_gamma)
-  for (nn in 1 : n_neigh) {
-    scores_nn <- scores[, nn, drop = FALSE]
-    B11 <- B11 + scores_nn %*% t(scores_nn)
-  }
-  B11 <- B11 / n_neigh
-  B11_inv <- chol2inv(chol(B11))
-  
-  # Calculating C21, and D12.
-  ypop <- apply(ygroupV, 2, mean)
-  
-  C21 <- array(0, dim = c(length(alpha), num_gamma))
-  D12 <- array(0, dim = c(num_gamma, length(alpha)))
-  
-  for (nn in 1 : n_neigh) {
-    C21 <- C21 - t(ygroupV[nn, , drop = FALSE]) %*% t(scores[, nn, drop = FALSE])
-    D12 <- D12 + scores[, nn, drop = FALSE] %*% (ygroupV[nn, , drop = FALSE] - ypop)
-  }
-  C21 <- C21 / n_neigh
-  D12 <- D12 / n_neigh
-  
-  chol_B11_inv <- chol(B11_inv)
-  mat1 <- C21 %*% t(chol_B11_inv) %*% t(C21 %*% t(chol_B11_inv))
-  mat <- C21 %*% B11_inv %*% D12
-  
-  var_est_ps <- mat1 + mat + t(mat)
-  var_est_ps <- ie_var + var_est_ps / n_neigh
-  
-  return(var_est_ps) 
-}
-
-
-#' Indirect effect estimates and asymptotic variance.
-#' 
-#' @param ygroupV An matrix including the group average potential outcome
-#' estimates where rows correspond to group, and columns to values of alpha.
-#' #' @param boots The results of BootVar() function including estimates of the
-#' potential outcomes from the bootstrap samples.
-#' @param ps String. Can take values 'true', or 'estimated' for known or
-#' estimated propensity score. Defaults to 'true'.
-#' @param scores A matrix with rows corresponding to the parameters of the
-#' propensity score model and columns for groups. Includes the score of the
-#' propensity score evaluated for the variables of each group. Can be left
-#' NULL for ps = 'true'.
-#' @param alpha_level Numeric. The alpha level of the confidence intervals
-#' based on the quantiles of the bootstrap estimates.
-#' 
-#' @export
-#' 
-GM_IE <- function(ygroupV, boots = NULL, scores = NULL, alpha_level = 0.05) {
-  
-  alpha <- as.numeric(dimnames(ygroupV)[[2]])
-  ypop <- apply(ygroupV, 2, mean)
-  names(ypop) <- alpha
-  quants <- c(0, 1) + c(1, - 1) * alpha_level / 2
-  norm_quant <- - qnorm(alpha_level / 2)
-  
-  ie_var <- IEvar(ygroupV = ygroupV, scores = scores)
-  dim_names <- c('mu_Q1','mu_Q2', 'SE.est', 'var', 'LB', 'UB')
-  if (!is.null(boots)) {
-    dim_names <- c(dim_names, 'boot_var', 'boot_var_LB', 'boot_var_UB',
-                   'boot_low_quant', 'boot_high_quant')
-  }
-  
-  ie <- array(NA, dim = c(length(dim_names), length(alpha), length(alpha)))
-  dimnames(ie) <- list(stat = dim_names, alpha1 = alpha, alpha2 = alpha)
-  
-  for (a1 in 1 : length(alpha)) {
-    for (a2 in 1 : length(alpha)) {
-      ie[1, a1, a2] <- ypop[a1]
-      ie[2, a1, a2] <- ypop[a2]
-      ie[3, a1, a2] <- ypop[a2]/ypop[a1]
-      ie[4, a1, a2] <- delta_method(ie_var[c(a1, a2), c(a1, a2)], vec = c(1, -1/(ypop[a1])^2))
-      ie_sd <- sqrt(ie[4, a1, a2])
-      ie[c(5, 6), a1, a2] <- ie[1, a1, a2] + norm_quant * c(- 1, 1) * ie_sd
-    }
-  }
-  
-  if (!is.null(boots)) {
-    ie_var_boots <- array(NA, dim = c(length(alpha), length(alpha)))
-    for (a1 in 1 : length(alpha)) {
-      for (a2 in 1 : length(alpha)) {
-        ie[5, a1, a2] <- var(boots[1, a1, ] - boots[1, a2, ])
-        ie_sd <- sqrt(ie[5, a1, a2])
-        ie[c(6, 7), a1, a2] <- ie[1, a1, a2] + norm_quant * c(- 1, 1) * ie_sd
-        ie[c(8, 9), a1, a2] <- quantile(boots[1, a2, ] - boots[1, a1, ],
-                                        probs = quants)
-      }
-    }
-  }
-  
-  return(ie)
-}
-
-
-#' Indirect effect estimates and asymptotic variance.
-#' 
-#' @param ygroup An matrix including the group average potential outcome
+#' @param ygroupM An matrix including the group average potential outcome
 #' estimates where rows correspond to group, and columns to values of alpha.
 #' #' @param boots The results of BootVar() function including estimates of the
 #' potential outcomes from the bootstrap samples.
@@ -716,7 +552,6 @@ GM_IE <- function(ygroupM, boots = NULL, ps = c('true', 'estimated'),
   quants <- c(0, 1) + c(1, - 1) * alpha_level / 2
   norm_quant <- - qnorm(alpha_level / 2)
   
-  ie_var <- 2 #IEvar(ygroup = ygroup, ps = ps, scores = scores)
   dim_names <- c('est', 'var', 'LB', 'UB')
   if (!is.null(boots)) {
     dim_names <- c(dim_names, 'boot_var', 'boot_var_LB', 'boot_var_UB',
@@ -728,8 +563,8 @@ GM_IE <- function(ygroupM, boots = NULL, ps = c('true', 'estimated'),
   
   for (a1 in 1 : length(alpha)) {
     for (a2 in 1 : length(alpha)) {
-      ie[1, a1, a2] <- exp(mean(log(ygroupM[, a2]) - log(ygroupM[, a1])))
-      ie[2, a1, a2] <- 2 #delta_method(ie_var[c(a1, a2), c(a1, a2)])
+      ie[1, a1, a2] <- exp(mean(log(ygroupM[, a2]) - log(ygroupM[, a1]))) # estimate of SE
+      ie[2, a1, a2] <- IEvar(ygroupV = ygroupM, a1, a2, scores = scores)   # variance of SE
       ie_sd <- sqrt(ie[2, a1, a2])
       ie[c(3, 4), a1, a2] <- ie[1, a1, a2] + norm_quant * c(- 1, 1) * ie_sd
     }
@@ -750,3 +585,66 @@ GM_IE <- function(ygroupM, boots = NULL, ps = c('true', 'estimated'),
   
   return(ie)
 }
+
+
+IEvar <- function(ygroupV, a1, a2, scores){
+  n_neigh <- dim(ygroupV)[1]
+  alpha <- as.numeric(dimnames(ygroupV)[[2]])
+  
+  ie_var <- cov(log(ygroupV))
+  ie_var <- ie_var * (n_neigh - 1) / (n_neigh ^ 2)
+  
+  # Check scores input
+  if (is.null(scores)) {
+    stop('Provide score matrix.')
+  }
+  
+  var_est_ps <- array(0, dim = dim(ie_var))
+  num_gamma <- dim(scores)[1]
+  
+  # --- B11: Information matrix of the cluster ps
+  B11 <- matrix(0, nrow = num_gamma, ncol = num_gamma)
+  for (nn in 1:n_neigh) {
+    scores_nn <- scores[, nn, drop = FALSE]
+    B11 <- B11 + scores_nn %*% t(scores_nn)
+  }
+  B11 <- B11 / n_neigh
+  B11_inv <- chol2inv(chol(B11))
+  
+  # Initialize C21 and D12 as vectors
+  C21 <- rep(0, num_gamma)
+  D12 <- rep(0, num_gamma)
+  
+  se_mean <- numeric(n_neigh)
+  
+  for (nn in 1:n_neigh) {
+    log_y_nn <- log(ygroupV[nn, ])  # Extract row for clarity
+    se_mean[nn] <- log_y_nn[a2] - log_y_nn[a1]
+  }
+  
+  mean_se_mean <- mean(se_mean)
+  
+  for (nn in 1:n_neigh) {
+    log_y_nn <- log(ygroupV[nn, ])
+    logdiff <- log_y_nn[a2] - log_y_nn[a1]  # Scalar difference
+    
+    # Update D12 as a vector
+    D12 <- D12 + scores[, nn, drop = FALSE] * (logdiff - mean_se_mean)
+  }
+  
+  C21 <- C21 / n_neigh
+  D12 <- D12 / n_neigh
+  
+  chol_B11_inv <- chol(B11_inv)
+  mat1 <- (C21 %*% t(chol_B11_inv)) %*% t(C21 %*% t(chol_B11_inv))
+  mat <- C21 %*% B11_inv %*% D12
+  
+  var_est_ps <- mat1 + mat + t(mat)
+  var_est_ps <- ie_var[a1, a2] + var_est_ps / n_neigh
+  
+  return(var_est_ps) 
+}
+
+
+
+

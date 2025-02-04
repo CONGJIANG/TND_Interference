@@ -11,7 +11,8 @@ library(lme4)
 
 source("TNDintIPWestimator.R")
 
-datagen_int<-function(rangeN = 400:500, nblocks=1000,OR_1=3, OR_2 =10, OR_C=3.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F){
+datagen_int<-function(rangeN = 400:500, nblocks=1000,
+                      OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F){
   data.list <- list()
   N <- sample(x = rangeN, size = nblocks, replace = TRUE)
   vaxpos <- rtruncnorm(nblocks, -1, 1, mean = 0, sd = 1)
@@ -99,16 +100,6 @@ apply(ygroup, c(2, 3), mean, na.rm = TRUE)
 ypop <- apply(ygroup, 2, mean)
 exp(apply( (log(ygroup[, 2, ]) - log(ygroup[, 1, ])), 2, mean))
 
-
-# for testing
-dta = datTND; cov_cols = cov_cols; phi_hat = phi_hat;
-alpha = alpha; trt_col = which(names(datTND) == 'V'); out_col = which(names(datTND) == 'Y');
-estimand = 'GLMM';
-gamma_numer = gamma_numer;alpha_re_bound = 10; integral_bound = 10;keep_re_alpha = FALSE;verbose = TRUE;neigh_ind = NULL;
-A = dta$V[neigh_ind[[nn]]];X = dta[neigh_ind[[nn]], cov_cols];
-
-
-
 # ----------- Estimates and asymptotic variance of the population average potential----------- #
 Score.est <- CalcScore(dta = datTND, neigh_ind = datTND$block, phi_hat = phi_hat, cov_cols = cov_cols,
                        trt_name = 'V', integral_bound = 10)
@@ -119,7 +110,134 @@ GM_DE(ygroup = ygroup, boots = NULL, alpha = alpha, alpha_level = 0.05, scores =
 (se0 <- GM_IE(ygroupM = ygroup[, 1, ], scores = Score.est))
 (se1 <- GM_IE(ygroupM = ygroup[, 2, ], scores = Score.est))
 
-r <- 6
+
+
+
+
+# Load required packages
+library(ggplot2)
+library(dplyr)
+
+# Number of Monte Carlo replications
+MC_reps <- 2
+# Function to generate one MC replication
+run_MC_replication <- function() {
+  datTND <- datagen_int(nblocks=1000)
+  # ----------- PS estimates ----------- #
+  cov_names <- c('C')
+  cov_cols <- which(names(datTND) %in% cov_names)
+  cov_names <- names(datTND)[cov_cols]
+  glm_form <- paste('V ~ (1 | block) +', paste(cov_names, collapse = ' + '))
+  phi_hat <- PS_model(datTND, glm_form = glm_form, method = 'TND_IPW')
+  
+  
+  # ---------- Coefficients of counterfactual treatment allocation ----------- #
+  gamma_numer <- Policy_coef(datTND, gamma_form= glm_form, method = 'TND_IPW')
+  
+  # ----------- Calculating the IPW ----------- #
+  # Type B: estimand = '1'
+  obs_alpha <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
+  alpha_range <- quantile(obs_alpha$V, probs = c(0.2, 0.9))
+  alpha <- seq(alpha_range[1], alpha_range[2], length.out = 5)
+  alpha <- unique(sort(round(c(alpha, 0.34, 0.5), 2)))
+  
+  resB <-GroupIPW(dta = datTND, cov_cols = cov_cols, phi_hat = phi_hat,
+                  alpha = alpha, trt_col = which(names(datTND) == 'V'), out_col = which(names(datTND) == 'Y'),
+                  estimand = 'GLMM',
+                  gamma_numer = gamma_numer)
+  ygroup = resB$yhat_group
+  
+  # Compute GM_DE results
+  GM_DE_result <- GM_DE(ygroup = ygroup, boots = NULL, alpha = alpha, alpha_level = 0.05, scores = Score.est, dta = datTND)
+  
+  # Compute GM_IE results
+  GM_IE_v1 <- GM_IE(ygroupM = ygroup[, 1, ], scores = Score.est)
+  GM_IE_v0 <- GM_IE(ygroupM = ygroup[, 2, ], scores = Score.est)
+  
+  # Extract estimates and confidence intervals
+  GM_DE_summary <- data.frame(alpha = colnames(GM_DE_result),
+                              est = GM_DE_result["est", ],
+                              var = GM_DE_result["var", ],
+                              low_int = GM_DE_result["low_int", ],
+                              high_int = GM_DE_result["high_int", ])
+  
+  GM_IE_sumv1 <- list(); GM_IE_sumv2 <- list()
+  for (alpha2 in dimnames(GM_IE_v1)[[3]]) {
+    temp <- data.frame(alpha1 = colnames(GM_IE_v1[, , alpha2]),
+                       est = GM_IE_v1["est", , alpha2],
+                       var = GM_IE_v1["var", , alpha2],
+                       LB = GM_IE_v1["LB", , alpha2],
+                       UB = GM_IE_v1["UB", , alpha2],
+                       alpha2 = alpha2)
+    GM_IE_sumv1[[alpha2]] <- temp
+  }
+  
+  for (alpha2 in dimnames(GM_IE_v0)[[3]]) {
+    temp <- data.frame(alpha1 = colnames(GM_IE_v0[, , alpha2]),
+                       est = GM_IE_v0["est", , alpha2],
+                       var = GM_IE_v0["var", , alpha2],
+                       LB = GM_IE_v0["LB", , alpha2],
+                       UB = GM_IE_v0["UB", , alpha2],
+                       alpha2 = alpha2)
+    GM_IE_sumv1[[alpha2]] <- temp
+  }
+  
+  GM_IE_sumv1 <- bind_rows(GM_IE_sumv1);  GM_IE_sumv0 <- bind_rows(GM_IE_sumv0)
+  
+  return(list(GM_DE = GM_DE_summary, GM_IEv1 = GM_IE_sumv1, GM_IEv0 = GM_IE_sumv0))
+}
+
+# Run MC replications and store results
+MC_results <- replicate(MC_reps, run_MC_replication(), simplify = FALSE)
+
+# Aggregate GM_DE results
+GM_DE_all <- bind_rows(lapply(MC_results, `[[`, "GM_DE"))
+GM_DE_summary <- GM_DE_all %>%
+  group_by(alpha) %>%
+  summarise(mean_est = mean(est), sd_est = sd(est), 
+            mean_low_int = mean(low_int), mean_high_int = mean(high_int))
+
+# Aggregate GM_IE results
+GM_IE_all <- bind_rows(lapply(MC_results, `[[`, "GM_IE"))
+GM_IE_sumv1 <- GM_IE_all %>%
+  group_by(alpha1, alpha2) %>%
+  summarise(mean_est = mean(est), sd_est = sd(est), 
+            mean_LB = mean(LB), mean_UB = mean(UB))
+
+# Plot GM_DE estimates with confidence intervals
+ggplot(GM_DE_summary, aes(x = as.numeric(alpha), y = mean_est)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_low_int, ymax = mean_high_int), width = 0.02) +
+  labs(title = "GM_DE Estimates with Confidence Intervals",
+       x = "Alpha", y = "Estimate") +
+  theme_minimal()
+
+# Plot GM_IE estimates with confidence intervals
+ggplot(GM_IE_sumv1, aes(x = as.numeric(alpha1), y = mean_est, color = as.factor(alpha2))) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_LB, ymax = mean_UB), width = 0.02) +
+  labs(title = "GM_IE Estimates with Confidence Intervals",
+       x = "Alpha1", y = "Estimate", color = "Alpha2") +
+  theme_minimal()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+r <- 3
 # Initialize a list to store results
 resDE.org <- vector("list", length = r)
 resSE0.org <- vector("list", length = r)
@@ -146,30 +264,25 @@ for (i in 1:r) {
     
     # ----------- Calculating the IPW ----------- #
     # Type B: estimand = '1'
-    #obs_alpha <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
-    #alpha_range <- quantile(obs_alpha$V, probs = c(0.3, 0.8))
-    #alpha <- seq(alpha_range[1], alpha_range[2], length.out = 10)
-    #alpha <- unique(sort(round(c(alpha, 0.1, 0.3), 2)))
-    alpha <- as.numeric(dimnames(de.org)$alpha)
+    obs_alpha <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
+    alpha_range <- quantile(obs_alpha$V, probs = c(0.2, 0.9))
+    alpha <- seq(alpha_range[1], alpha_range[2], length.out = 5)
+    alpha <- unique(sort(round(c(alpha, 0.34, 0.5), 2)))
     
     resB <-GroupIPW(dta = datTND, cov_cols = cov_cols, phi_hat = phi_hat,
                     alpha = alpha, trt_col = which(names(datTND) == 'V'), out_col = which(names(datTND) == 'Y'),
-                    estimand = '1',
+                    estimand = 'GLMM',
                     gamma_numer = gamma_numer)
     ygroup = resB$yhat_group
     
     # ----------- Estimates and asymptotic variance of the population average potential----------- #
     Score.est <- CalcScore(dta = datTND, neigh_ind = datTND$block, phi_hat = phi_hat, cov_cols = cov_cols,
                            trt_name = 'V', integral_bound = 10)
-    Ypop.est <- Ypop(ygroup, ps = 'estimated', scores = Score.est,
-                     dta = datTND, use = 'everything')
-    
-    resDE.tnd[[i]] <- DE(ypop = Ypop.est$ypop, ypop_var = Ypop.est$ypop_var, boots = NULL, alpha = alpha,
-                         alpha_level = 0.05)
+    resDE.tnd[[i]] <- GM_DE(ygroup = ygroup, boots = NULL, alpha = alpha, alpha_level = 0.05, scores = Score.est, dta = datTND)
     
     #. indices corresponding to treatment = 0,  and [ygroup[, 2, ] is for treatment = 1]
-    resSE0.tnd[[i]] <- IE(ygroupV = ygroup[, 1, ], scores = Score.est)
-    resSE1.tnd[[i]] <- IE(ygroupV = ygroup[, 2, ], scores = Score.est)
+    resSE0.tnd[[i]] <- GM_IE(ygroupM = ygroup[, 1, ], scores = Score.est)
+    resSE1.tnd[[i]] <- GM_IE(ygroupM = ygroup[, 2, ], scores = Score.est)
   }, error = function(e) {
     # Print the error message
     cat("Error in iteration", i, ":", conditionMessage(e), "\n")
@@ -178,149 +291,113 @@ for (i in 1:r) {
 }
 
 
-# Save the list to a file
-saveRDS(resDE.tnd, file = "resDE_tnd.rds")
-saveRDS(resSE0.tnd, file = "resSE0_tnd.rds")
-saveRDS(resSE1.tnd, file = "resSE1_tnd.rds")
-
-# Save the list to a file
-saveRDS(resDE.org, file = "resDE_org.rds")
-saveRDS(resSE0.org, file = "resSE0_org.rds")
-saveRDS(resSE1.org, file = "resSE1_org.rds")
-
-# Read the list from the file
-resDE.org <- readRDS(file = "resDE_org.rds")
-
-# Print the loaded list
-print(my_loaded_list)
-
-# Sample list of 3-d arrays
-list_of_mat <- resDE.org
-list_of_arrays <- resSE0.org
 
 
-# Function to compute average of 3-d arrays in the list
-average_of_mat <- function(list_of_mat) {
-  # Combine the mat into a single 3-d array
-  combined_array <- array(unlist(list_of_mat), dim = c(dim(list_of_mat[[1]]), length(list_of_mat)))
-  # Compute the average over the number of elements of the dimension-wise of the 3-d array
-  dimensionwise_average <- apply(combined_array, c(1, 2), median)
-  dimnames(dimensionwise_average) <- list(stat = dimnames(list_of_mat[[1]])[[1]],
-                                          alpha = dimnames(list_of_mat[[1]])[[2]])
-  return(round(dimensionwise_average, digits = 5))
+
+
+# Initialize lists to store results
+resDE.tnd <- vector("list", r)
+resSE0.tnd <- vector("list", r)
+resSE1.tnd <- vector("list", r)
+
+# Run the function r times and store the results
+for (i in 1:r) {
+  tryCatch({
+    cat("Running iteration", i, "...\n")  # Progress tracking
+    
+    # Data generation
+    datTND <- datagen_int(nblocks = 1000)
+    
+    # ----------- PS estimates ----------- #
+    cov_names <- c('C')
+    cov_cols <- which(names(datTND) %in% cov_names)
+    cov_names <- names(datTND)[cov_cols]
+    glm_form <- paste('V ~ (1 | block) +', paste(cov_names, collapse = ' + '))
+    phi_hat <- PS_model(datTND, glm_form = glm_form, method = 'TND_IPW')
+    
+    # ---------- Coefficients of counterfactual treatment allocation ----------- #
+    gamma_numer <- Policy_coef(datTND, gamma_form = glm_form, method = 'TND_IPW')
+    
+    # ----------- Calculating the IPW ----------- #
+    obs_alpha <- aggregate(V ~ block, data = datTND, FUN = function(x) mean(x == 1))
+    alpha_range <- quantile(obs_alpha$V, probs = c(0.2, 0.9))
+    alpha <- seq(alpha_range[1], alpha_range[2], length.out = 5)
+    alpha <- unique(sort(round(c(alpha, 0.34, 0.5), 2)))  # Ensure unique, sorted alphas
+    
+    # Compute Group IPW
+    resB <- GroupIPW(
+      dta = datTND, cov_cols = cov_cols, phi_hat = phi_hat,
+      alpha = alpha, trt_col = which(names(datTND) == 'V'), 
+      out_col = which(names(datTND) == 'Y'),
+      estimand = 'GLMM', gamma_numer = gamma_numer
+    )
+    ygroup <- resB$yhat_group
+    
+    # ----------- Compute Estimates ----------- #
+    Score.est <- CalcScore(
+      dta = datTND, neigh_ind = datTND$block, phi_hat = phi_hat, cov_cols = cov_cols,
+      trt_name = 'V', integral_bound = 10
+    )
+    
+    # Store results
+    resDE.tnd[[i]] <- GM_DE(ygroup = ygroup, boots = NULL, alpha = alpha, alpha_level = 0.05, scores = Score.est, dta = datTND)
+    resSE0.tnd[[i]] <- GM_IE(ygroupM = ygroup[, 1, ], scores = Score.est)
+    resSE1.tnd[[i]] <- GM_IE(ygroupM = ygroup[, 2, ], scores = Score.est)
+    
+  }, error = function(e) {
+    cat("Error in iteration", i, ":", conditionMessage(e), "\n")
+  })
 }
 
+cat("Monte Carlo simulations completed!\n")
 
-# Function to compute average of 3-d arrays in the list
-average_of_arrays <- function(list_of_arrays) {
-  # Combine the arrays into a single 4-d array
-  combined_array <- array(unlist(list_of_arrays), dim = c(dim(list_of_arrays[[1]]), length(list_of_arrays)))
-  # Compute the average over the number of elements of the dimension-wise of the 3-d array
-  dimensionwise_average <- apply(combined_array, c(1, 2, 3), median)
-  dimnames(dimensionwise_average) <- list(stat = dimnames(list_of_arrays[[1]])[[1]],
-                                          alpha1 = dimnames(list_of_arrays[[1]])[[2]], alpha2 = dimnames(list_of_arrays[[1]])[[3]])
-  return(round(dimensionwise_average, digits = 5))
+
+# Convert lists to data frames
+resDE.df <- do.call(rbind, resDE.tnd)
+resSE0.df <- do.call(rbind, resSE0.tnd)
+resSE1.df <- do.call(rbind, resSE1.tnd)
+
+
+library(dplyr)
+
+# Function to summarize results
+summarize_results <- function(df) {
+  df %>%
+    group_by(alpha) %>%  # Group by alpha values
+    summarise(
+      mean_est = mean(estimate, na.rm = TRUE),
+      sd_est = sd(estimate, na.rm = TRUE),
+      se_est = sd_est / sqrt(n()),  # Standard error
+      lower_CI = mean_est - 1.96 * se_est,  # 95% CI lower bound
+      upper_CI = mean_est + 1.96 * se_est   # 95% CI upper bound
+    )
 }
 
-# Compute the average of the arrays in the list
-(de.org <- average_of_mat(resDE.org))
-(de.tnd <- average_of_mat(resDE.tnd))
-
-(se0.org <- average_of_arrays(resSE0.org))
-(se0.tnd <- average_of_arrays(resSE0.tnd))
-
-se1.org <- average_of_arrays(resSE1.org)
-se1.tnd <- average_of_arrays(resSE1.tnd)
+# Summarize for each metric
+summary_DE <- summarize_results(resDE.df)
+summary_SE0 <- summarize_results(resSE0.df)
+summary_SE1 <- summarize_results(resSE1.df)
 
 
-# Specify plot_boot to be 1, 2, or 3 for the different calculations of CIs.
-# 1 corresponds to asymptotic, 2 uses variance of bootstrap samples, 3 uses
-# bootstrap quantiles.
-plot_boot <- 1
-index_low <- ifelse(plot_boot == 1, 5, ifelse(plot_boot == 2, 6, 8))
-index_high <- index_low + 1
-
-# Creating data frames
-de_plot <- data.frame(alpha = as.numeric(dimnames(de.org)$alpha), de_org = de.org[3, ], de_tnd = de.tnd[3, ],
-                      low_org = de.org[index_low, ], low_tnd = de.tnd[index_low, ],
-                      high_org =  de.org[index_high, ], high_tnd =  de.tnd[index_high, ])
-
-a1 <- which(alpha == 0.13)
-se1_plot <- data.frame(alpha = alpha, se1_org = se1.org[3, a1, ], se1_tnd = se1.tnd[3, a1, ],
-                       low_org = se1.org[index_low, a1, ], low_tnd = se1.tnd[index_low, a1, ],
-                       high_org = se1.org[index_high, a1, ], high_tnd = se1.tnd[index_high, a1, ])
-
-a1 <- which(alpha == 0.21)
-se2_plot <- data.frame(alpha = alpha, se2_org = se1.org[3, a1, ], se2_tnd = se1.tnd[3, a1, ],
-                       low_org = se1.org[index_low, a1, ], low_tnd = se1.tnd[index_low, a1, ],
-                       high_org = se1.org[index_high, a1, ],high_tnd = se1.tnd[index_high, a1, ])
-
-
-res_array <- array(NA, dim = c(length(alpha), 6, 3))
-dimnames(res_array) <- list(alpha = alpha, quant = c('DE.ORG', 'DE.TND', 'SE1.ORG', 'SE1.TND', 'SE2.ORG','SE2.TND'),
-                            stat = c('est',  'LB', 'HB'))
-
-# Assign values to the res_array
-# For DE
-res_array[, 1:2, 'est'] <- as.matrix(de_plot[, c('de_org', 'de_tnd')])
-res_array[, 1:2, 'LB'] <- as.matrix(de_plot[, c('low_org', 'low_tnd')])
-res_array[, 1:2, 'HB'] <- as.matrix(de_plot[, c('high_org','high_tnd') ])
-
-# For SE1
-res_array[, 3:4, 'est'] <- as.matrix(se1_plot[, c('se1_org','se1_tnd') ])
-res_array[, 3:4, 'LB'] <- as.matrix(se1_plot[, c('low_org', 'low_tnd')])
-res_array[, 3:4, 'HB'] <- as.matrix(se1_plot[, c('high_org','high_tnd')])
-
-# For SE2
-res_array[, 5:6, 'est'] <- as.matrix(se2_plot[, c('se2_org','se2_tnd') ])
-res_array[, 5:6, 'LB'] <- as.matrix(se2_plot[, c('low_org', 'low_tnd')])
-res_array[, 5:6, 'HB'] <- as.matrix(se2_plot[, c('high_org','high_tnd')])
-
-# Create res_df from res_array
-res_df <- plyr::adply(res_array[, , 1], 1:2)
-
-# Combine lower and upper bounds for DE and SE plots
-res_df$LB.org <- c(de_plot$low_org, se1_plot$low_org, se2_plot$low_org)
-res_df$UB.org <- c(de_plot$high_org, se1_plot$high_org, se2_plot$high_org)
-res_df$LB.tnd <- c(de_plot$low_tnd, se1_plot$low_tnd, se2_plot$low_tnd)
-res_df$UB.tnd <- c(de_plot$high_tnd, se1_plot$high_tnd, se2_plot$high_tnd)
-
-# Define facet labels
-f_names <- list('DE.ORG' = expression(DE(alpha) ~ 'Org'),
-                'DE.TND' = expression(DE(alpha) ~ 'Tnd'),
-                'SE1.ORG' = expression(SE(0.13,alpha) ~ 'Org'),
-                'SE1.TND' = expression(SE(0.13,alpha) ~ 'Tnd'),
-                'SE2.ORG' = expression(SE(0.21,alpha) ~ 'Org'),
-                'SE2.TND' = expression(SE(0.21,alpha) ~ 'Tnd'))
-
-# Define labeller function
-f_labeller <- function(variable, value){
-  return(f_names[value])
-}
-
-# Plotting
 library(ggplot2)
 
-# For DE plot
-ggplot(data = res_df[res_df$quant %in% c("DE.ORG"), ], aes(x = alpha, y = V1, group = quant)) +  
-  geom_line(aes(color = quant, linetype = "org")) +
-  geom_ribbon(aes(ymin = LB.org, ymax = UB.org, group = quant), alpha = 0.3) +
-  facet_wrap(~ quant, nrow = 1, labeller = f_labeller) +
-  xlab(expression(alpha)) + ylab('') +
-  theme(axis.title = element_text(size = 12),
-        strip.text = element_text(size = 13),
-        axis.text = element_text(size = 10)) +
-  scale_x_continuous(breaks = seq(0.1, 0.4, by = 0.1)) +
-  geom_hline(yintercept = 0, linetype = 2)
+# Function to create CI plots
+plot_results <- function(summary_df, title) {
+  ggplot(summary_df, aes(x = alpha, y = mean_est)) +
+    geom_point(color = "blue", size = 2) +  # Mean estimates
+    geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = 0.05, color = "red") +  # CI bars
+    labs(title = title, x = "Alpha", y = "Estimate") +
+    theme_minimal()
+}
 
-# For SE plot
-ggplot(data = res_df[res_df$quant %in% c("SE1.ORG", "SE1.TND", "SE2.ORG", "SE2.TND"), ], aes(x = alpha, y = est, group = quant)) +  
-  geom_line(aes(color = quant, linetype = "org")) +
-  geom_ribbon(aes(ymin = LB, ymax = UB, group = quant), alpha = 0.3) +
-  facet_wrap(~ quant, nrow = 1, labeller = f_labeller) +
-  xlab(expression(alpha)) + ylab('') +
-  theme(axis.title = element_text(size = 12),
-        strip.text = element_text(size = 13),
-        axis.text = element_text(size = 10)) +
-  scale_x_continuous(breaks = seq(0.1, 0.4, by = 0.1)) +
-  geom_hline(yintercept = 0, linetype = 2)
+# Plot results
+plot_DE <- plot_results(summary_DE, "Estimated Direct Effects")
+plot_SE0 <- plot_results(summary_SE0, "Estimated Indirect Effects (Treatment = 0)")
+plot_SE1 <- plot_results(summary_SE1, "Estimated Indirect Effects (Treatment = 1)")
+
+# Display plots
+print(plot_DE)
+print(plot_SE0)
+print(plot_SE1)
+
+
