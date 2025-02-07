@@ -225,11 +225,11 @@ Denominator <- function(A, X, phi_hat, alpha = NULL, integral_bound = 10,
 #' @param verbose Whether printing of progress is wanted. Defaults to TRUE.
 #' 
 #' @export
-GroupIPW <- function(dta, cov_cols, phi_hat, gamma_numer = NULL, alpha,
-                     neigh_ind = NULL, trt_col = NULL, out_col = NULL, 
-                     alpha_re_bound = 10, integral_bound = 10,
-                     keep_re_alpha = FALSE, estimand = c('GLMM', 'TypeB'),
-                     verbose = TRUE) {
+GroupIPW<-function(dta, cov_cols, phi_hat, gamma_numer = NULL, alpha,
+                   neigh_ind = NULL, trt_col = NULL, out_col = NULL, 
+                   alpha_re_bound = 10, integral_bound = 10,
+                   keep_re_alpha = FALSE, estimand = c('GLMM', 'TypeB'),
+                   verbose = TRUE) {
   
   #estimand <- match.arg(estimand)
   estimand <- match.arg(estimand, choices=c("GLMM",'TypeB'))
@@ -240,13 +240,17 @@ GroupIPW <- function(dta, cov_cols, phi_hat, gamma_numer = NULL, alpha,
   
   # We only return the ksi's if we are estimating estimand 'GLMM'.
   keep_re_alpha <- keep_re_alpha & (estimand == 'GLMM')
-
+  
   # Specifyling neigh_ind will avoid re-running the following lines.
   if (is.null(neigh_ind)) {
     neigh_ind <- sapply(1 : max(dta$block), function(x) which(dta$block == x))
   }
   # removing there is no units in the block (removing because all 0 or 1 are removed)
-  neigh_ind<-neigh_ind[-which(unlist(lapply(neigh_ind, function(x){length(x)==0})))]
+  rm_ind<-unlist(lapply(neigh_ind, function(x){length(x)==0}))
+  if(sum(rm_ind)>0){
+    neigh_ind<-neigh_ind[-which(rm_ind)]
+  }
+  
   n_neigh <- length(neigh_ind)
   
   yhat_group <- array(NA, dim = c(n_neigh, 2, length(alpha)))
@@ -329,6 +333,7 @@ GroupIPW <- function(dta, cov_cols, phi_hat, gamma_numer = NULL, alpha,
   }
   return(list(yhat_group = yhat_group))
 }
+
 
 
 ###########################################
