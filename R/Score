@@ -1,0 +1,58 @@
+CalcScore <- function(dta, neigh_ind = NULL, phi_hat, cov_cols,
+                      trt_name = NULL, integral_bound = 10, re_var_thresh = 1e-6) {
+  
+  dta <- as.data.frame(dta)
+  if (is.null(neigh_ind)) {
+    n_neigh <- max(dta$neigh)
+    neigh_ind <- sapply(1 : n_neigh, function(x) which(dta$neigh == x))
+  }
+  n_neigh <- length(neigh_ind)
+  
+  # Set a threshold for re_var
+  re_var <- phi_hat[[2]]
+  if (re_var < re_var_thresh) {
+    re_var <- 0  # Treat as no random effect
+  }
+  
+  num_gamma <- length(phi_hat$coefs) + (re_var > 0)
+  phi_hat$coefs <- matrix(phi_hat$coefs, ncol = 1)
+
+  if (is.null(trt_name)) {
+    trt_name <- 'A'
+  }
+  trt_col <- which(names(dta) == trt_name)
+
+  scores <- matrix(NA, nrow = num_gamma, ncol = n_neigh)
+  
+  for (nn in 1 : n_neigh) {
+    
+    Ai <- dta[neigh_ind[[nn]], trt_col]
+    Xi <- dta[neigh_ind[[nn]], cov_cols]
+    
+    hess_function <- function(gamma) {
+      
+      phi_hat_hess <- list()
+      if (re_var == 0) {
+        phi_hat_hess$coefs <- gamma
+        phi_hat_hess$re_var <- 0
+      } else {
+        phi_hat_hess$coefs <- gamma[- num_gamma]
+        phi_hat_hess$re_var <- gamma[num_gamma]
+      }
+      
+      likelihood <- Denominator(A = Ai, X = Xi, phi_hat = phi_hat_hess,
+                                include_alpha = FALSE,
+                                integral_bound = integral_bound)
+      return(log(likelihood$value))
+    }
+    
+    hess_x <- as.numeric(phi_hat$coefs)
+    if (re_var > 0) {
+      hess_x <- c(hess_x, re_var)
+    }
+    
+    scores[, nn] <- numDeriv::grad(hess_function, x = hess_x)
+
+  }
+  return(scores)  
+}
