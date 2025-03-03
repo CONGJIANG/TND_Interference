@@ -1,0 +1,19 @@
+    IEvar<-function(ygroupV, a1, a2, scores){
+      n_neigh <- dim(ygroupV)[1]
+      alpha <- as.numeric(dimnames(ygroupV)[[2]])
+      
+      # Check scores input
+      if (is.null(scores)) {
+        stop('Provide score matrix.')
+      }
+      log_y_rec<-matrix(0,nrow=n_neigh, ncol=1)
+      
+      for (nn in 1:n_neigh) {
+        log_y_nn <- log(ygroupV[nn, ])
+        log_y_rec[nn,] <- log_y_nn[a2] - log_y_nn[a1]  # Scalar difference
+      }
+
+      var_est_ps <- apply(log_y_rec,2,var)
+      
+      return(var_est_ps) 
+    }
