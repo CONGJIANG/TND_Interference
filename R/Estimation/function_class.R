@@ -1,5 +1,6 @@
 datagen_int<-function(rangeN = 400:500, nblocks=1000,
-                      OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F
+                      OR_0=3,OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,OR_H_g_V=1,em=0, Infec_a=0.25
+                      , Infec_b=3,Infec_c=1.5, return_full=F
                       ,treat_type="GLMM",parameter_vec){
   #' treat_type="GLMM"
   #' parameter_vec=c(alpha,beta_0,beta_1,include_RE=F, sigma=sigma)
@@ -59,9 +60,12 @@ datagen_int<-function(rangeN = 400:500, nblocks=1000,
     # Step3. Outcome model
     #infection
     #Infection (with something) has some common risk factors U1 and C
-    Infec<-rbinom(prob=plogis(0.25*C-3+1.5*U1),size=1,n=N[i]) #current prevalence around 0.007
+    #Infec<-rbinom(prob=plogis(0.25*C-3+1.5*U1),size=1,n=N[i]) #current prevalence around 0.007
+    Infec<-rbinom(prob=plogis(Infec_a*C-Infec_b+Infec_c*U1),size=1,n=N[i]) #current prevalence around 0.007
     #Infected with COVID #vaccine more effective with high vaccination rates
-    Infprob=plogis(-3.5 + C - log(OR_1)*V - log(OR_2)* g.V - log(OR_C)*V*(g.V) +em*V*C +log(2)*U2-2*U1)
+    #Infprob=plogis(-3.5 + C - log(OR_1)*V - log(OR_2)* g.V - log(OR_C)*V*(g.V) +em*V*C +log(2)*U2-2*U1)
+    Infprob=plogis(-OR_0 + C - log(OR_1)*V - log(OR_2)* g.V - log(OR_C)*V*(g.V) +em*V*C +log(2)*U2-2*U1)
+    #mean(Infprob)
     #range(Infprob)
     # which(is.na(Infprob))
     Infec_COVID<-rbinom(prob = Infprob, size=1,n=N[i])
@@ -72,8 +76,8 @@ datagen_int<-function(rangeN = 400:500, nblocks=1000,
     W<-(W1|W2)
     #hospitalization
     H=rep(0,N[i])
-    # **** realized: set to log(1)*g.V[W==1], this will be more realistic.
-    Hprob<-plogis(0.5*C[W==1]-log(OR_H)*V[W==1]-0.5*U1[W==1]+g.V[W==1])
+    # **** realized: set to log(1)*g.V[W==1], this will be more realistic. 
+    Hprob<-plogis(0.5*C[W==1]-log(OR_H)*V[W==1]-0.5*U1[W==1]+log(OR_H_g_V)*g.V[W==1])
     H[W==1]<-rbinom(prob=Hprob,size=1,n=sum(W==1))
     #selection on outcome for testing (does not condition on infectious status, just being in the hospital)
     R <- as.vector(na.omit(sample((1:N[i])[H == 1], min(rangeN[1], sum(H == 1)))))
