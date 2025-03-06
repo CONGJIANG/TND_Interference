@@ -25,7 +25,7 @@ datagen_int<-function(rangeN = 400:500, nblocks=1000,
   #vaxpos <- rtruncnorm(nblocks, -1, 1, mean = 0, sd = 1)
   # ?? should we have it in our case or not.
   # rangeN each 
-  vaxpos <- rtruncnorm(nblocks, -1, 1, mean = 0, sd = parameter_vec["sigma"] )
+  vaxpos <- rnorm(nblocks, mean = 0, sd = parameter_vec["sigma"] )
   # in total nblocks blocks, each block has N[i] people. 
   for(i in 1:nblocks){
     # Step1. Data generation
@@ -48,7 +48,7 @@ datagen_int<-function(rangeN = 400:500, nblocks=1000,
       }else{
         ## 
         # vaxpos <- rtruncnorm(nblocks, -1, 1, mean = 0, sd = parameter_vec["sigma"] )
-        p_trt <- plogis(parameter_vec["beta_0"] + parameter_vec["beta_1"]*C+0.5*vaxpos[i])
+        p_trt <- plogis(parameter_vec["beta_0"] + parameter_vec["beta_1"]*C+ vaxpos[i])
       }
       
     }else if(treat_type=="Type-B"){
@@ -109,8 +109,8 @@ datagen_int<-function(rangeN = 400:500, nblocks=1000,
 
 
 datagen_int_old1<-function(rangeN = 400:500, nblocks=1000,
-                      OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F
-                      ,treat_type="GLMM",parameter_vec){
+                           OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F
+                           ,treat_type="GLMM",parameter_vec){
   
   if (return_full == FALSE) {
     data.list <- list()
@@ -217,8 +217,8 @@ estimand_glmm_one_iter_old1<- function(N, betas,datFull){
 
 # data generation
 datagen_int_old1<-function(rangeN = 400:500, nblocks=1000,
-                      OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F
-                      ,treat_type="GLMM",parameter_vec){
+                           OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F
+                           ,treat_type="GLMM",parameter_vec){
   
   if (return_full == FALSE) {
     data.list <- list()
@@ -305,8 +305,8 @@ datagen_int_old1<-function(rangeN = 400:500, nblocks=1000,
 
 # data generation
 datagen_int_old1<-function(rangeN = 400:500, nblocks=1000,
-                      OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F
-                      ,treat_type="GLMM",parameter_vec){
+                           OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=F
+                           ,treat_type="GLMM",parameter_vec){
   
   if (return_full == FALSE) {
     data.list <- list()
@@ -316,7 +316,7 @@ datagen_int_old1<-function(rangeN = 400:500, nblocks=1000,
     data.list_select <- list()
     data.list_full <- list()
   }
-
+  
   N <- sample(x = rangeN, size = nblocks, replace = TRUE)
   vaxpos <- rtruncnorm(nblocks, -1, 1, mean = 0, sd = 1)
   # in total nblocks blocks, each block has N[i] people. 
@@ -434,5 +434,4 @@ estimand_glmm_one_iter<-function(N, betas,datFull){
   }
   return(estimands)
 }
-
 
