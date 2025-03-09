@@ -40,19 +40,20 @@ source("function_class.R")
 # use this to generate any datatype of data, can generate full, use for estimand 
 # can also generate tnd sample, use for estimation.
 
-#treat_type="GLMM"
-#parameter_vec=c(alpha=NA,beta_0=-0.25,beta_1=0.3,include_RE=T, sigma=0.1)
-#parameter_vec=c(alpha=0.3,beta_0=NA,beta_1=0.3,include_RE=F, sigma=0.1)
+#treat_type="GLMM2"
+#parameter_vec = c(alpha=NA,beta_0=-0.35,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
+#treat_type="GLMM1"
+#parameter_vec=c(alpha= 0.3,beta_0=NA, beta_1=0.3, beta_2=0.5,include_RE=F, sigma=0.5)
 # return_full=F
 # rangeN = 400:500
 # nblocks=1000
-# treat_type<-"GLMM"
-# parameter_vec<-c(alpha=NA,beta_0=-0.25,beta_1=0.3,include_RE=T, sigma=0.1)
+# treat_type<-"GLMM2"
+# parameter_vec = c(alpha=NA,beta_0=-0.35,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
 
 num_sub<-1000
 alpha_vec<-seq(0.2,0.8,by=0.1)
-nblocks<-500
-rangeN<-100:120
+nblocks<-2000
+rangeN<-5000:8000
 estimands<-matrix(0,nrow=nblocks,ncol=4)
 estimands<-data.frame(estimands)
 colnames(estimands)<-c("mu","mu_1","mu_0","block")
@@ -63,22 +64,22 @@ treat_type<-"GLMM"
 
 
 for(i in 1:length(alpha_vec)){
-  
-  parameter_vec<-c(alpha=alpha_vec[i],beta_0=NA,beta_1=0.3,include_RE=F, sigma=0.1)
+  #"GLMM1"
+  parameter_vec<-c(alpha=alpha_vec[i],beta_0=NA, beta_1=0.3, beta_2=0.5,include_RE=F, sigma=0.5)
   
   # the size of clusters is random 
   for(m in 1:num_sub){
     # for each repetition, 
-    # we have 1000 clusters, each of them randomly have 400-500 units 
+    # we have 2000 clusters, each of them randomly have 5000-8000 units 
     
     set.seed(m)
     if (m %% 10 == 0) {
       print(paste("Iteration:", m))
     }
     
-    full_data<-datagen_int(rangeN = rangeN, nblocks,
-                           OR_1=2, OR_2 =3, OR_C=1.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, return_full=T
-                           ,treat_type="GLMM",parameter_vec=parameter_vec)
+    
+    data <- datagen_int(rangeN = rangeN, nblocks = nblocks, parameter_vec = parameter_vec)
+    full_data <-data$data_full
     
     N<-as.vector(table(full_data$block))
     
@@ -341,17 +342,17 @@ fin_res<-fin_res$res_rec[,-c(3:5)]
 #In addition: There were 50 or more warnings (use warnings() to see the first 50)
 
 set.seed(2025)
-treat_type<-"GLMM"
+treat_type<-"GLMM2"
 #parameter_vec=c(alpha=NA,beta_0=-0.25,beta_1=0.3,include_RE=T, sigma=0.3)
-parameter_vec=c(alpha=NA,beta_0=-0.25,beta_1=0.3,include_RE=T, sigma=0.3)
+parameter_vec = c(alpha=NA,beta_0=-0.35,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
 # treat_type="Type-B"
 #parameter_vec=c(alpha=0.5,beta_0=NA,beta_1=0.3,include_RE=F, sigma=0.3)
 # ***the number of cluster larger
 # *** need return full, estimation of beta_0, beta_1, sigma close as TND sample return =F
 # *** the number of clsters increases, sigma, larger. Estimation sigma...
 # nblocks<-1000
-nblocks<-1000
-rangeN<-100:120
+nblocks<-2000
+rangeN<-5000:8000
 
 #datTND<-datagen_int(OR_1=2, OR_2 =3,nblocks=1000,return_full = "BOTH",treat_type=treat_type,parameter_vec=parameter_vec)
 
@@ -370,20 +371,18 @@ library(dplyr)
 # realized: Barkley's model.
 # should get back to hypothetical theoretical value. 
 
-run_MC_replication <- function(return_full=F) {
+run_MC_replication <- function() {
   
   # estimation part, use Barkeley's model. 
-  temp_data<-datagen_int(rangeN = rangeN, nblocks,
-                      OR_0=1, OR_1=1, OR_2 =2, OR_C=0.6,OR_WI=1,OR_WC=5,OR_H=1,em=0, 
-                      Infec_b=2, return_full="BOTH"
-                      ,treat_type="GLMM",parameter_vec=parameter_vec)
+  data <- datagen_int(rangeN = rangeN, nblocks = nblocks, treat_type="GLMM", parameter_vec = parameter_vec)
   
-  datTND<-temp_data$data_select
-  datFULL<-temp_data$data_full
+  datTND<-data$data_TND
+  datFULL <-data$data_full
+  datSRS <-data$data_SRS
   
   # ----------- PS estimates ----------- #
   # what's the difference between phi_hat and gamma_numer? 
-  cov_names <- c('C')
+  cov_names <- c('C1', 'C2')
   cov_cols <- which(names(datTND) %in% cov_names)
   cov_names <- names(datTND)[cov_cols]
   #
@@ -397,6 +396,10 @@ run_MC_replication <- function(return_full=F) {
   phi_hat_TND <- PS_model(datTND, glm_form = glm_form, method = 'TND_IPW')
   # ***full data, ori_IPW
   phi_hat_FULL <- PS_model(datFULL, glm_form = glm_form, method = 'ORG_IPW')
+  # ***tnd all data, traditional_IPW
+  phi_hat_TRAD <- PS_model(datTND, glm_form = glm_form, method = 'ORG_IPW')
+  # ***srs data, srs_IPW
+  phi_hat_SRS<- PS_model(datSRS, glm_form = glm_form, method = 'ORG_IPW')
   
   # ---------- Coefficients of counterfactual treatment allocation ----------- #
   #gamma_numer <- Policy_coef(datTND, gamma_form= glm_form, method = 'TND_IPW')
