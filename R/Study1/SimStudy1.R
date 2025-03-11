@@ -26,9 +26,8 @@ datagen_int <- function(rangeN = 400:500, nblocks = 1000,
   
   for (i in 1:nblocks) {
     C1 <- runif(n = N[i], 1, 2)
-    C2 <- rbinom(n = N[i], size = 1, prob = plogis(0.4 + 0.3 * vaxpos[i]))
+    C2 <- rnorm(n = N[i], 0.6, 0.5)
     U1 <- rbinom(n = N[i], size = 1, prob = 0.5)
-    
     
     if (treat_type == "GLMM") {
       if (!parameter_vec["include_RE"]) {
@@ -83,8 +82,8 @@ datagen_int <- function(rangeN = 400:500, nblocks = 1000,
 
 
 
-MC_sim <- function(r, parameter_vec = c(alpha=NA,beta_0=-0.35,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)) {
-  output_file <- paste0("/n/home09/c55jiang/TND_Interference/Mar5_6", ".txt")
+MC_sim <- function(r, parameter_vec) {
+  output_file <- paste0("/n/home09/c55jiang/TND_Interference/Mar5_7", ".txt")
   
   for (i in 1:r) {
     data <- datagen_int(rangeN<-5000:8000, nblocks = 2000,parameter_vec = parameter_vec)
@@ -125,6 +124,7 @@ MC_sim <- function(r, parameter_vec = c(alpha=NA,beta_0=-0.35,beta_1=0.3,beta_2=
 
 # Example usage
 r <- 1000   # Number of replicates
-sim.res <- MC_sim(r = r)
+parameter_vec <- c(alpha=NA,beta_0=-0.6,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
+sim.res <- MC_sim(r = r, parameter_vec = parameter_vec)
 
 

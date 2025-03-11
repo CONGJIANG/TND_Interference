@@ -1,6 +1,7 @@
 ######
 ######
 # Control exch. holds
+
 datagen_int <- function(rangeN = 400:500, nblocks = 1000,
                         OR_0 = 3, OR_1 = 2, OR_2 = 3, OR_C = 1.6, OR_WI = 1, OR_WC = 5, OR_H = 1, OR_H_g_V = 1,
                         em = 0, Infec_a = 0.25, Infec_b = 3, Infec_c = 1.5, 
@@ -24,13 +25,12 @@ datagen_int <- function(rangeN = 400:500, nblocks = 1000,
   
   for (i in 1:nblocks) {
     C1 <- runif(n = N[i], 1, 2)
-    C2 <- rbinom(n = N[i], size = 1, prob = plogis(0.4 + 0.3 * vaxpos[i]))
+    C2 <- rnorm(n = N[i], 0.6, 0.5)
     U1 <- rbinom(n = N[i], size = 1, prob = 0.5)
-    
     
     if (treat_type == "GLMM") {
       if (!parameter_vec["include_RE"]) {
-        re_beta <- FromAlphaToRE(alpha = parameter_vec["alpha"], lin_pred = parameter_vec["beta_1"] * C1 + parameter_vec["beta_2"] * C2)
+        re_beta <- FromAlphaToRE(alpha = parameter_vec["alpha"],  lin_pred = parameter_vec["beta_1"] * C1 + parameter_vec["beta_2"] * C2)
         p_trt <- plogis(re_beta + parameter_vec["beta_1"] * C1 + parameter_vec["beta_2"] * C2)
       } else {
         p_trt <- plogis(parameter_vec["beta_0"] + parameter_vec["beta_1"] * C1 + parameter_vec["beta_2"] * C2 + vaxpos[i])
@@ -76,6 +76,9 @@ datagen_int <- function(rangeN = 400:500, nblocks = 1000,
   # Return all three datasets
   return(data)
 }
+
+
+
 
 
 

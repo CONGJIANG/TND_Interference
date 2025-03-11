@@ -41,14 +41,14 @@ source("function_class.R")
 # can also generate tnd sample, use for estimation.
 
 #treat_type="GLMM2"
-#parameter_vec = c(alpha=NA,beta_0=-0.35,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
+#parameter_vec = c(alpha=NA,beta_0=-0.6,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
 #treat_type="GLMM1"
 #parameter_vec=c(alpha= 0.3,beta_0=NA, beta_1=0.3, beta_2=0.5,include_RE=F, sigma=0.5)
 # return_full=F
 # rangeN = 400:500
 # nblocks=1000
 # treat_type<-"GLMM2"
-# parameter_vec = c(alpha=NA,beta_0=-0.35,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
+# parameter_vec = c(alpha=NA,beta_0=-0.6,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
 
 num_sub<-1000
 alpha_vec<-seq(0.2,0.8,by=0.1)
@@ -344,7 +344,7 @@ fin_res<-fin_res$res_rec[,-c(3:5)]
 set.seed(2025)
 treat_type<-"GLMM2"
 #parameter_vec=c(alpha=NA,beta_0=-0.25,beta_1=0.3,include_RE=T, sigma=0.3)
-parameter_vec = c(alpha=NA,beta_0=-0.35,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
+parameter_vec = c(alpha=NA,beta_0=-0.6,beta_1=0.3,beta_2=0.5,include_RE=T, sigma=0.5)
 # treat_type="Type-B"
 #parameter_vec=c(alpha=0.5,beta_0=NA,beta_1=0.3,include_RE=F, sigma=0.3)
 # ***the number of cluster larger
